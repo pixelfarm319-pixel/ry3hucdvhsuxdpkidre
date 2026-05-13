@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Farm Tycoon</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            background: #1e3c72; color: #ecf0f1; font-family: 'Press Start 2P', cursive;
+            margin: 0; padding: 0; height: 100vh; width: 100vw; overflow: hidden;
+            touch-action: none; display: flex; flex-direction: column;
+        }
+        #top-bar {
+            background: #2c3e50; padding: 8px; display: flex; justify-content: space-around;
+            border-bottom: 4px solid #1a252f; z-index: 10; height: 70px; align-items: center; flex-shrink: 0;
+        }
+        .stat-box {
+            background: rgba(0,0,0,0.3); padding: 6px 10px; border-radius: 6px;
+            border: 2px solid #f1c40f; text-align: center; min-width: 70px;
+        }
+        .stat-label { color: #95a5a6; font-size: 7px; display: block; margin-bottom: 2px; }
+        .stat-value { color: #f1c40f; font-size: 12px; }
+        #game-area {
+            flex: 1; position: relative; overflow: hidden; background: #87CEEB;
+            display: flex; justify-content: center; align-items: center;
+        }
+        canvas {
+            image-rendering: pixelated; display: block; touch-action: none;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            max-width: 100%;
+            max-height: 100%;
+        }
+        #controls {
+            height: 38vh; background: #2c3e50; border-top: 4px solid #1a252f;
+            display: flex; flex-direction: column; z-index: 20; flex-shrink: 0;
+        }
+        .tabs { display: flex; background: #34495e; overflow-x: auto; }
+        .tab-btn {
+            flex: 1; min-width: 80px; padding: 10px 5px; background: #34495e; border: none;
+            border-bottom: 4px solid #2c3e50; color: #95a5a6; font-family: inherit;
+            font-size: 8px; cursor: pointer; white-space: nowrap;
+        }
+        .tab-btn.active { background: #e67e22; color: white; border-bottom: 4px solid #d35400; }
+        .tab-content { flex: 1; overflow-y: auto; padding: 10px; display: none; }
+        .tab-content.active { display: block; }
+        .tool-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
+        .btn {
+            background: #e67e22; color: white; border: 2px solid #d35400; padding: 8px 4px;
+            font-family: inherit; font-size: 8px; cursor: pointer; border-radius: 4px;
+            text-align: center; box-shadow: 0 3px 0 #a04000; line-height: 1.2;
+        }
+        .btn:active { transform: translateY(3px); box-shadow: none; }
+        .btn.active { background: #f1c40f; color: #2c3e50; border-color: #f39c12; box-shadow: 0 3px 0 #d68910; }
+        .item-row {
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(255,255,255,0.1); padding: 8px; margin-bottom: 6px;
+            border-radius: 4px; border: 2px solid transparent; font-size: 8px;
+        }
+        .item-row.selected { border-color: #f1c40f; background: rgba(241,196,15,0.1); }
+        .item-row.locked { opacity: 0.5; filter: grayscale(1); }
+        #toast {
+            position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.9); color: white; padding: 10px; border-radius: 4px;
+            font-size: 9px; pointer-events: none; display: none; z-index: 100;
+            text-align: center; width: 90%; border: 1px solid #f1c40f;
+        }
+    </style>
+</head>
+<body>
+    <div id="top-bar">
+        <div class="stat-box"><span class="stat-label">💰 МОНЕТЫ</span><span class="stat-value" id="ui-money">0</span></div>
+        <div class="stat-box"><span class="stat-label">⭐ УРОВЕНЬ</span><span class="stat-value" id="ui-lvl">1</span></div>
+        <div class="stat-box"><span class="stat-label">🌾 XP</span><span class="stat-value" id="ui-xp">0/100</span></div>
+    </div>
+
+    <div id="game-area">
+        <canvas id="gameCanvas"></canvas>
+        <div id="toast"></div>
+    </div>
+
+    <div id="controls">
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('tools')">🛠 ИНСТРУМЕНТЫ</button>
+            <button class="tab-btn" onclick="switchTab('seeds')">🌱 СЕМЕНА</button>
+            <button class="tab-btn" onclick="switchTab('animals')">🐔 ЖИВОТНЫЕ</button>
+            <button class="tab-btn" onclick="switchTab('build')">🏭 ЗДАНИЯ</button>
+            <button class="tab-btn" onclick="switchTab('feed')">🥕 КОРМ</button>
+        </div>
+
+        <div id="tab-tools" class="tab-content active">
+            <div class="tool-grid">
+                <button class="btn active" id="btn-hoe" onclick="setTool('hoe')">⛏️<br>Мотыга</button>
+                <button class="btn" id="btn-water" onclick="setTool('water')">💧<br>Лейка</button>
+                <button class="btn" id="btn-plant" onclick="setTool('plant')">🌱<br>Посадить</button>
+                <button class="btn" id="btn-harvest" onclick="setTool('harvest')">🧺<br>Собрать</button>
+                <button class="btn" id="btn-buy-animal" onclick="setTool('buy_animal')">🐣<br>Купить жив.</button>
+                <button class="btn" id="btn-clear" onclick="setTool('clear')">🔨<br>Снос</button>
+            </div>
+            <button class="btn" style="width:100%; background:#27ae60; border-color:#219150;" onclick="expandMap()">
+                🚧 Расширить поле (<span id="expand-cost">500</span>$)
+            </button>
+        </div>
+
+        <div id="tab-seeds" class="tab-content"><div id="seeds-list"></div></div>
+        <div id="tab-animals" class="tab-content"><div id="animals-list"></div></div>
+        <div id="tab-build" class="tab-content"><div id="buildings-list"></div></div>
+        <div id="tab-feed" class="tab-content">
+            <div style="padding:10px; text-align:center; font-size:9px; color:#bdc3c7;">
+                Покупайте корм, чтобы животные приносили доход.<br><br>
+                <button class="btn" onclick="buyFeed(10)">Купить 10 ед. (50$)</button><br><br>
+                <button class="btn" onclick="buyFeed(50)">Купить 50 ед. (200$)</button>
+                <div style="margin-top:20px; color:#f1c40f;">У вас корма: <span id="ui-feed">0</span></div>
+            </div>
+        </div>
+    </div>
+
+<script>
+var TILE_SIZE = 32;
+var TEX_PATH = 'textures/';
+var grassTextures = [];
+var soilDryImg = null;
+var soilWetImg = null;
+var potatoSprites = {};
+var carrotSprites = {};
+var wheatSprites = {};
+var chickenAwakeImg = null;
+var chickenSleepingImg = null;
+var tentImg = null;
+var wellImg = null;
+var greenhouseImg = null;
+var imagesLoaded = 0;
+var totalImagesToLoad = 22;
+var texturesFailed = 0;
+
+function createFallbackTexture(color) {
+    var c = document.createElement('canvas');
+    c.width = TILE_SIZE; c.height = TILE_SIZE;
+    var ctx = c.getContext('2d');
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+    return c;
+}
+
+function loadAllImages() {
+    for(var i=0; i<3; i++) {
+        var img = new Image();
+        var fname = i===0 ? 'grass_plain.png' : 'grass'+i+'.png';
+        img.onload = function() { grassTextures[this.dataset.idx] = this; imagesLoaded++; checkAllLoaded(); };
+        img.onerror = function() { 
+            grassTextures[this.dataset.idx] = createFallbackTexture(i===0 ? '#76B041' : '#7EC850'); 
+            imagesLoaded++; texturesFailed++; checkAllLoaded(); 
+        };
+        img.dataset.idx = i;
+        img.src = TEX_PATH + fname;
+    }
+    
+    var soilDry = new Image();
+    soilDry.onload = function() { soilDryImg = soilDry; imagesLoaded++; checkAllLoaded(); };
+    soilDry.onerror = function() { soilDryImg = createFallbackTexture('#8B6F47'); imagesLoaded++; texturesFailed++; checkAllLoaded(); };
+    soilDry.src = TEX_PATH + 'soil_dry.png';
+    
+    var soilWet = new Image();
+    soilWet.onload = function() { soilWetImg = soilWet; imagesLoaded++; checkAllLoaded(); };
+    soilWet.onerror = function() { soilWetImg = createFallbackTexture('#5D4037'); imagesLoaded++; texturesFailed++; checkAllLoaded(); };
+    soilWet.src = TEX_PATH + 'soil_wet.png';
+
+    for(var i=1; i<=4; i++) {
+        var img = new Image();
+        img.onload = function() { potatoSprites[this.dataset.idx] = this; imagesLoaded++; checkAllLoaded(); };
+        img.onerror = function() { 
+            potatoSprites[this.dataset.idx] = createFallbackTexture('#F4D03F'); 
+            imagesLoaded++; texturesFailed++; checkAllLoaded(); 
+        };
+        img.dataset.idx = i;
+        img.src = TEX_PATH + 'potato_' + i + '.png';
+    }
+
+    for(var i=1; i<=4; i++) {
+        var img = new Image();
+        img.onload = function() { carrotSprites[this.dataset.idx] = this; imagesLoaded++; checkAllLoaded(); };
+        img.onerror = function() { 
+            carrotSprites[this.dataset.idx] = createFallbackTexture('#E67E22'); 
+            imagesLoaded++; texturesFailed++; checkAllLoaded(); 
+        };
+        img.dataset.idx = i;
+        img.src = TEX_PATH + 'carrot_' + i + '.png';
+    }
+
+    for(var i=1; i<=4; i++) {
+        var img = new Image();
+        img.onload = function() { wheatSprites[this.dataset.idx] = this; imagesLoaded++; checkAllLoaded(); };
+        img.onerror = function() { 
+            wheatSprites[this.dataset.idx] = createFallbackTexture('#F1C40F'); 
+            imagesLoaded++; texturesFailed++; checkAllLoaded(); 
+        };
+        img.dataset.idx = i;
+        img.src = TEX_PATH + 'wheat_' + i + '.png';
+    }
+
+    var chAwake = new Image();
+    chAwake.onload = function() { chickenAwakeImg = this; imagesLoaded++; checkAllLoaded(); };
+    chAwake.onerror = function() { chickenAwakeImg = createFallbackTexture('#ECF0F1'); imagesLoaded++; texturesFailed++; checkAllLoaded(); };
+    chAwake.src = TEX_PATH + 'chicken_awake.png';
+
+    var chSleep = new Image();
+    chSleep.onload = function() { chickenSleepingImg = this; imagesLoaded++; checkAllLoaded(); };
+    chSleep.onerror = function() { chickenSleepingImg = createFallbackTexture('#95A5A6'); imagesLoaded++; texturesFailed++; checkAllLoaded(); };
+    chSleep.src = TEX_PATH + 'chicken_sleeping.png';
+
+    var tent = new Image();
+    tent.onload = function() { tentImg = tent; imagesLoaded++; checkAllLoaded(); };
+    tent.onerror = function() { tentImg = createFallbackTexture('#ECF0F1'); imagesLoaded++; texturesFailed++; checkAllLoaded(); };
+    tent.src = TEX_PATH + 'tent.png';
+
+    var well = new Image();
+    well.onload = function() { wellImg = well; imagesLoaded++; checkAllLoaded(); };
+    well.onerror = function() { wellImg = createFallbackTexture('#3498DB'); imagesLoaded++; texturesFailed++; checkAllLoaded(); };
+    well.src = TEX_PATH + 'well.png';
+
+    var greenhouse = new Image();
+    greenhouse.onload = function() { greenhouseImg = greenhouse; imagesLoaded++; checkAllLoaded(); };
+    greenhouse.onerror = function() { greenhouseImg = createFallbackTexture('#2ECC71'); imagesLoaded++; texturesFailed++; checkAllLoaded(); };
+    greenhouse.src = TEX_PATH + 'greenhouse.png';
+}
+
+function checkAllLoaded() {
+    if(imagesLoaded >= totalImagesToLoad) {
+        if(texturesFailed > 0) console.log('Загружено текстур: ' + (totalImagesToLoad - texturesFailed) + ', ошибок: ' + texturesFailed);
+        if(state.map.length > 0) { centerCamera(); draw(); }
+    }
+}
+
+var CROPS_DB = [
+    {n:"Картофель", c:10, s:18, t:3000, col:"#F4D03F"},
+    {n:"Морковь", c:15, s:28, t:4000, col:"#E67E22"},
+    {n:"Пшеница", c:20, s:35, t:5000, col:"#F1C40F"},
+    {n:"Кукуруза", c:35, s:60, t:7000, col:"#F7DC6F"},
+    {n:"Томат", c:50, s:90, t:9000, col:"#E74C3C"},
+    {n:"Клубника", c:80, s:150, t:12000, col:"#FF7675"},
+    {n:"Тыква", c:120, s:240, t:15000, col:"#D35400"},
+    {n:"Подсолнух", c:150, s:300, t:18000, col:"#F1C40F"},
+    {n:"Арбуз", c:200, s:450, t:22000, col:"#2ECC71"},
+    {n:"Виноград", c:300, s:700, t:30000, col:"#8E44AD"},
+    {n:"Баклажан", c:350, s:800, t:32000, col:"#34495E"},
+    {n:"Перец Чили", c:400, s:950, t:35000, col:"#C0392B"},
+    {n:"Ананас", c:600, s:1400, t:40000, col:"#F1C40F"},
+    {n:"Кофе", c:800, s:2000, t:50000, col:"#6E4C3F"},
+    {n:"Кактус", c:2200, s:5500, t:80000, col:"#2ECC71"}
+];
+
+var CROPS = {};
+for(var k=0; k<CROPS_DB.length; k++) {
+    var c = CROPS_DB[k];
+    CROPS["crop_" + k] = {
+        id: "crop_" + k, name: c.n, cost: c.c, sell: c.s, time: c.t, color: c.col, unlockLvl: 1 + Math.floor(k/2)
+    };
+}
+
+var ANIMALS_DB = [
+    {n:"Курица", cost:250, inc:5, feedCost:1, col:"#ECF0F1", w:1, h:1},
+    {n:"Кролик", cost:600, inc:12, feedCost:2, col:"#BDC3C7", w:1, h:1},
+    {n:"Утка", cost:1200, inc:25, feedCost:3, col:"#F1C40F", w:1, h:1},
+    {n:"Овца", cost:2500, inc:50, feedCost:5, col:"#D7BDE2", w:1, h:1},
+    {n:"Коза", cost:4000, inc:80, feedCost:6, col:"#95A5A6", w:1, h:1},
+    {n:"Свинья", cost:7000, inc:150, feedCost:10, col:"#F5B7B1", w:2, h:1},
+    {n:"Индейка", cost:10000, inc:220, feedCost:12, col:"#34495E", w:1, h:1},
+    {n:"Корова", cost:20000, inc:450, feedCost:20, col:"#FDFEFE", w:2, h:2},
+    {n:"Лама", cost:35000, inc:800, feedCost:30, col:"#E59866", w:1, h:2},
+    {n:"Страус", cost:60000, inc:1500, feedCost:50, col:"#2C3E50", w:2, h:2}
+];
+
+var ANIMALS = {};
+for(var a=0; a<ANIMALS_DB.length; a++) {
+    var an = ANIMALS_DB[a];
+    ANIMALS["anim_" + a] = {
+        id: "anim_" + a, name: an.n, cost: an.cost, inc: an.inc, feed: an.feedCost, color: an.col, w: an.w, h: an.h, unlockLvl: 1 + Math.floor(a*2)
+    };
+}
+
+var BUILDINGS = {
+    tent: { name: "Палатка", w:1, h:1, cost:500, inc:5, col:"#ECF0F1" },
+    well: { name: "Колодец", w:1, h:1, cost:1500, inc:20, col:"#3498DB" },
+    cart: { name: "Телега", w:2, h:1, cost:3000, inc:50, col:"#95A5A6" },
+    greenhouse: { name: "Теплица", w:3, h:2, cost:10000, inc:200, col:"#2ECC71" },
+    barn: { name: "Амбар", w:3, h:3, cost:50000, inc:800, col:"#C0392B" },
+    windmill: { name: "Мельница", w:2, h:4, cost:120000, inc:2500, col:"#F1C40F" }
+};
+
+var state = {
+    money: 300, lvl: 1, xp: 0, feed: 20, mapW: 12, mapH: 12, map: [],
+    tool: 'hoe', seed: 'crop_0', animalToBuy: 'anim_0', buildMode: null, camX: 0, camY: 0, lastSave: Date.now()
+};
+
+var floatingTexts = [];
+
+function initMap(w, h, keepOld) {
+    var newMap = [];
+    for(var y=0; y<h; y++) {
+        var row = [];
+        for(var x=0; x<w; x++) {
+            if (keepOld && state.map[y] && state.map[y][x]) {
+                row.push(state.map[y][x]);
+            } else {
+                var rand = Math.random();
+                var texIndex = rand < 0.6 ? 0 : Math.floor(Math.random() * 2) + 1;
+                row.push({ type: 0, crop: null, animal: null, building: null, texIndex: texIndex });
+            }
+        }
+        newMap.push(row);
+    }
+    state.map = newMap;
+    state.mapW = w;
+    state.mapH = h;
+    if(!keepOld) centerCamera();
+}
+
+function centerCamera() {
+    var cvs = document.getElementById('gameCanvas');
+    var area = document.getElementById('game-area');
+    
+    // Получаем реальные размеры области отображения
+    var areaWidth = area.clientWidth;
+    var areaHeight = area.clientHeight;
+    
+    // Размер карты в пикселях
+    var mapWidth = state.mapW * TILE_SIZE;
+    var mapHeight = state.mapH * TILE_SIZE;
+    
+    // Центрируем камеру
+    state.camX = (areaWidth - mapWidth) / 2;
+    state.camY = (areaHeight - mapHeight) / 2;
+    
+    // Если карта больше области, центрируем по центру
+    if (mapWidth > areaWidth) state.camX = (areaWidth - mapWidth) / 2;
+    if (mapHeight > areaHeight) state.camY = (areaHeight - mapHeight) / 2;
+}
+
+function saveGame() { 
+    state.lastSave = Date.now();
+    try { localStorage.setItem('farmSave_v29', JSON.stringify(state)); } catch(e){}
+}
+
+function loadGame() {
+    var s = localStorage.getItem('farmSave_v29');
+    if(s) {
+        try {
+            var p = JSON.parse(s);
+            state.money = p.money || 300;
+            state.lvl = p.lvl || 1;
+            state.xp = p.xp || 0;
+            state.feed = p.feed || 20;
+            state.mapW = p.mapW || 12;
+            state.mapH = p.mapH || 12;
+            state.map = p.map || [];
+            state.seed = p.seed || 'crop_0';
+            if(state.map.length === 0) initMap(12, 12);
+        } catch(e) { initMap(12, 12); }
+    } else { initMap(12, 12); }
+    updateUI();
+    loadAllImages();
+}
+
+function resetGame() {
+    if(confirm("Сброс?")) { localStorage.removeItem('farmSave_v29'); location.reload(); }
+}
+
+var cvs = document.getElementById('gameCanvas');
+var ctx = cvs.getContext('2d');
+
+function resize() {
+    var area = document.getElementById('game-area');
+    var mapWidth = state.mapW * TILE_SIZE;
+    var mapHeight = state.mapH * TILE_SIZE;
+    
+    // Canvas всегда равен размеру карты
+    cvs.width = mapWidth;
+    cvs.height = mapHeight;
+    
+    // Центрируем камеру при изменении размера
+    centerCamera();
+    
+    if (state.map.length > 0) draw();
+}
+
+window.addEventListener('resize', function() { resize(); });
+
+var isDragging = false;
+var lastX = 0, lastY = 0;
+var dragStartX = 0, dragStartY = 0;
+var touchStartTime = 0;
+
+function setupInput() {
+    cvs.addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        var t = e.touches[0];
+        isDragging = false;
+        lastX = t.clientX; lastY = t.clientY;
+        dragStartX = t.clientX; dragStartY = t.clientY;
+        touchStartTime = Date.now();
+    }, {passive: false});
+
+    cvs.addEventListener('touchmove', function(e) {
+        e.preventDefault();
+        var t = e.touches[0];
+        var dx = t.clientX - lastX;
+        var dy = t.clientY - lastY;
+        if (Math.abs(t.clientX - dragStartX) > 5 || Math.abs(t.clientY - dragStartY) > 5) isDragging = true;
+        state.camX += dx; state.camY += dy;
+        lastX = t.clientX; lastY = t.clientY;
+    }, {passive: false});
+
+    cvs.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        if (!isDragging && (Date.now() - touchStartTime < 200)) {
+            var t = e.changedTouches[0];
+            handleInput(t.clientX, t.clientY);
+        }
+    });
+
+    cvs.addEventListener('mousedown', function(e) {
+        var rect = cvs.getBoundingClientRect();
+        handleInput(e.clientX, e.clientY);
+    });
+}
+
+function handleInput(clientX, clientY) {
+    var rect = cvs.getBoundingClientRect();
+    var scaleX = cvs.width / rect.width;
+    var scaleY = cvs.height / rect.height;
+    var canvasX = (clientX - rect.left) * scaleX;
+    var canvasY = (clientY - rect.top) * scaleY;
+    var worldX = canvasX - state.camX;
+    var worldY = canvasY - state.camY;
+    var tx = Math.floor(worldX / TILE_SIZE);
+    var ty = Math.floor(worldY / TILE_SIZE);
+
+    if (tx >= 0 && tx < state.mapW && ty >= 0 && ty < state.mapH) {
+        interact(tx, ty);
+    }
+}
+
+function interact(x, y) {
+    var tile = state.map[y][x];
+    if (state.buildMode) { placeBuilding(x, y); return; }
+    if (state.tool === 'buy_animal') { buyAnimal(x, y); return; }
+
+    if (state.tool === 'hoe') {
+        if (tile.type===0 && !tile.building && !tile.animal) { tile.type=1; addFloatingText(x, y, "Вскопано", "#F1C40F"); }
+    } else if (state.tool === 'water') {
+        if (tile.type===1) { tile.type=2; addFloatingText(x, y, "Полито", "#3498DB"); }
+    } else if (state.tool === 'plant') {
+        if (tile.type>=1 && !tile.crop && !tile.building && !tile.animal) { plantSeed(x, y); }
+    } else if (state.tool === 'harvest') {
+        if (tile.crop) { harvestCrop(x, y); }
+    } else if (state.tool === 'clear') {
+        if(tile.crop || tile.building || tile.animal || tile.type!==0) {
+            tile.crop = null; tile.building = null; tile.animal = null; tile.type = 0;
+            addFloatingText(x, y, "Снесено!", "#E74C3C");
+        }
+    }
+    saveGame();
+    updateUI();
+}
+
+function plantSeed(x, y) {
+    var seed = CROPS[state.seed];
+    if (state.money >= seed.cost) {
+        state.money -= seed.cost;
+        state.map[y][x].crop = { id: state.seed, p: 0, max: seed.time };
+        addFloatingText(x, y, "-"+seed.cost+"$", "#E74C3C");
+    } else { toast("Нет денег!"); }
+}
+
+function harvestCrop(x, y) {
+    var tile = state.map[y][x];
+    if (tile.crop.p >= tile.crop.max) {
+        var c = CROPS[tile.crop.id];
+        var profit = c.sell;
+        if (tile.type===2) profit = Math.floor(profit*1.3);
+        state.money += profit;
+        addXP(5);
+        tile.type = 1;
+        tile.crop = null;
+        addFloatingText(x, y, "+" + profit + "$", "#2ECC71");
+    } else { toast("Ещё не выросло!"); }
+}
+
+function buyAnimal(x, y) {
+    var animData = ANIMALS[state.animalToBuy];
+    var tile = state.map[y][x];
+    if (x + animData.w > state.mapW || y + animData.h > state.mapH) { toast("Не влезает!"); return; }
+    for(var dy=0; dy<animData.h; dy++) {
+        for(var dx=0; dx<animData.w; dx++) {
+            var t = state.map[y+dy][x+dx];
+            if (t.building || t.animal || t.type===0) { toast("Нужна ровная земля!"); return; }
+        }
+    }
+    if (state.money >= animData.cost) {
+        state.money -= animData.cost;
+        for(var dy=0; dy<animData.h; dy++) {
+            for(var dx=0; dx<animData.w; dx++) {
+                var t = state.map[y+dy][x+dx];
+                t.animal = { id: state.animalToBuy, mainX: x, mainY: y, isMain: (dx===0 && dy===0), hungryTimer: 0 };
+                t.type = 1;
+            }
+        }
+        addXP(20);
+        addFloatingText(x, y, "Куплено!", "#F1C40F");
+        state.tool = 'hoe';
+        updateUI();
+    } else { toast("Нужно " + animData.cost + "$"); }
+}
+
+function buyFeed(amount) {
+    var cost = amount * 5;
+    if (state.money >= cost) {
+        state.money -= cost;
+        state.feed += amount;
+        toast("Куплено " + amount + " корма");
+        updateUI();
+    } else { toast("Нет денег"); }
+}
+
+function placeBuilding(x, y) {
+    var bData = BUILDINGS[state.buildMode];
+    if (x + bData.w > state.mapW || y + bData.h > state.mapH) { toast("Не влезает!"); return; }
+    for(var dy=0; dy<bData.h; dy++) {
+        for(var dx=0; dx<bData.w; dx++) {
+            var t = state.map[y+dy][x+dx];
+            if (t.building || t.animal || t.type===0) { toast("Нужна земля!"); return; }
+        }
+    }
+    if (state.money < bData.cost) { toast("Нет денег!"); return; }
+    state.money -= bData.cost;
+    for(var dy=0; dy<bData.h; dy++) {
+        for(var dx=0; dx<bData.w; dx++) {
+            var t = state.map[y+dy][x+dx];
+            t.building = { id: state.buildMode, mainX: x, mainY: y, isMain: (dx===0 && dy===0) };
+            t.type = 1;
+        }
+    }
+    state.buildMode = null;
+    addFloatingText(x, y, "Построено", "#F1C40F");
+    updateUI();
+}
+
+function expandMap() {
+    var addW=4, addH=4;
+    var cost=500*(Math.max(state.mapW,state.mapH)-11);
+    if(state.money>=cost) {
+        state.money-=cost;
+        var oldW=state.mapW, oldH=state.mapH;
+        var shiftX=Math.floor(addW/2), shiftY=Math.floor(addH/2);
+        var newW=oldW+addW, newH=oldH+addH;
+        var newMap=[];
+        for(var y=0; y<newH; y++) {
+            var row=[];
+            for(var x=0; x<newW; x++) {
+                var ox=x-shiftX, oy=y-shiftY;
+                if(oy>=0 && oy<oldH && ox>=0 && ox<oldW) {
+                    var ot=state.map[oy][ox];
+                    var nt = JSON.parse(JSON.stringify(ot));
+                    if(nt.animal && nt.animal.isMain) { nt.animal.mainX+=shiftX; nt.animal.mainY+=shiftY; }
+                    if(nt.building && nt.building.isMain) { nt.building.mainX+=shiftX; nt.building.mainY+=shiftY; }
+                    row.push(nt);
+                } else {
+                    var rand = Math.random();
+                    var texIndex = rand < 0.6 ? 0 : Math.floor(Math.random() * 2) + 1;
+                    row.push({type:0, crop:null, animal:null, building:null, texIndex: texIndex});
+                }
+            }
+            newMap.push(row);
+        }
+        state.map=newMap; state.mapW=newW; state.mapH=newH;
+        state.camX+=shiftX*TILE_SIZE; state.camY+=shiftY*TILE_SIZE;
+        toast("Ферма расширена!"); resize(); updateUI();
+    } else toast("Нужно "+cost+"$");
+}
+
+function addXP(n) { 
+    state.xp+=n; 
+    var need=state.lvl*150; 
+    if(state.xp>=need) { state.lvl++; state.xp=0; toast("УРОВЕНЬ "+state.lvl+"!"); updateUI(); } 
+}
+
+var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playSound(type) {
+    if(audioCtx.state==='suspended') audioCtx.resume();
+    var o = audioCtx.createOscillator();
+    var g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    var now = audioCtx.currentTime;
+    if(type==='coin') {
+        o.frequency.setValueAtTime(1200,now); o.frequency.exponentialRampToValueAtTime(1800,now+0.1);
+        g.gain.setValueAtTime(0.1,now); g.gain.exponentialRampToValueAtTime(0.01,now+0.15);
+        o.start(now); o.stop(now+0.15);
+    } else if(type==='dig') {
+        o.type='square'; o.frequency.setValueAtTime(150,now);
+        g.gain.setValueAtTime(0.1,now); g.gain.exponentialRampToValueAtTime(0.01,now+0.1);
+        o.start(now); o.stop(now+0.1);
+    } else if(type==='plant') {
+        o.type='triangle'; o.frequency.setValueAtTime(300,now);
+        g.gain.setValueAtTime(0.08,now); g.gain.exponentialRampToValueAtTime(0.01,now+0.1);
+        o.start(now); o.stop(now+0.1);
+    } else if(type==='water') {
+        o.type='sine'; o.frequency.setValueAtTime(400,now); o.frequency.linearRampToValueAtTime(600,now+0.2);
+        g.gain.setValueAtTime(0.08,now); g.gain.linearRampToValueAtTime(0,now+0.2);
+        o.start(now); o.stop(now+0.2);
+    } else if(type==='build') {
+        o.type='sawtooth'; o.frequency.setValueAtTime(200,now); o.frequency.linearRampToValueAtTime(100,now+0.3);
+        g.gain.setValueAtTime(0.1,now); g.gain.linearRampToValueAtTime(0,now+0.3);
+        o.start(now); o.stop(now+0.3);
+    } else if(type==='levelup') {
+        o.frequency.setValueAtTime(400,now); o.frequency.setValueAtTime(600,now+0.1);
+        o.frequency.setValueAtTime(800,now+0.2); g.gain.setValueAtTime(0.1,now);
+        g.gain.linearRampToValueAtTime(0,now+0.4); o.start(now); o.stop(now+0.4);
+    }
+}
+
+setInterval(function(){
+    for(var y=0;y<state.mapH;y++) for(var x=0;x<state.mapW;x++) {
+        var t=state.map[y][x];
+        if(t.crop && t.crop.p<t.crop.max) { var sp=50; if(t.type===2) sp*=2; t.crop.p+=sp; }
+        if(t.type===2 && Date.now()-(t.wateredTime||0)>60000) t.type=1;
+    }
+},100);
+
+setInterval(function(){
+    var inc=0;
+    for(var y=0;y<state.mapH;y++) for(var x=0;x<state.mapW;x++) {
+        var t=state.map[y][x];
+        if(t.building && t.building.isMain && BUILDINGS[t.building.id].inc) inc+=BUILDINGS[t.building.id].inc;
+        if(t.animal && t.animal.isMain) {
+            var a=ANIMALS[t.animal.id]; 
+            t.animal.hungryTimer++;
+            if(t.animal.hungryTimer > 10) {
+                if(state.feed > 0) { 
+                    state.feed--; 
+                    t.animal.hungryTimer = 0; 
+                    inc += a.inc; 
+                    if(Math.random()<0.1) addXP(1); 
+                }
+            } else {
+                inc += Math.floor(a.inc / 2);
+            }
+        }
+    }
+    if(inc>0) { state.money+=inc; updateUI(); }
+},1000);
+
+setInterval(saveGame,15000);
+
+function draw() {
+    ctx.fillStyle="#87CEEB"; ctx.fillRect(0,0,cvs.width,cvs.height);
+    ctx.save(); ctx.translate(state.camX,state.camY);
+    
+    for(var y=0;y<state.mapH;y++) for(var x=0;x<state.mapW;x++) {
+        var t=state.map[y][x], px=x*TILE_SIZE, py=y*TILE_SIZE;
+        
+        if(t.type === 0 && grassTextures[t.texIndex]) {
+            ctx.drawImage(grassTextures[t.texIndex], px, py, TILE_SIZE, TILE_SIZE);
+        }
+        
+        if(t.type === 1) {
+            if(soilDryImg) ctx.drawImage(soilDryImg, px, py, TILE_SIZE, TILE_SIZE);
+            else { ctx.fillStyle="#8B6F47"; ctx.fillRect(px,py,TILE_SIZE,TILE_SIZE); }
+        }
+        if(t.type === 2) {
+            if(soilWetImg) ctx.drawImage(soilWetImg, px, py, TILE_SIZE, TILE_SIZE);
+            else { ctx.fillStyle="#5D4037"; ctx.fillRect(px,py,TILE_SIZE,TILE_SIZE); }
+        }
+        
+        if(t.building && t.building.isMain) { 
+            var b=BUILDINGS[t.building.id]; 
+            
+            if (b.name === "Палатка" && tentImg) {
+                ctx.drawImage(tentImg, px, py, TILE_SIZE, TILE_SIZE);
+            }
+            else if (b.name === "Колодец" && wellImg) {
+                ctx.drawImage(wellImg, px, py, TILE_SIZE, TILE_SIZE);
+            }
+            else if (b.name === "Теплица" && greenhouseImg) {
+                ctx.drawImage(greenhouseImg, px, py, b.w*TILE_SIZE, b.h*TILE_SIZE);
+            }
+            else {
+                ctx.fillStyle=b.col; 
+                ctx.fillRect(px,py,b.w*TILE_SIZE,b.h*TILE_SIZE); 
+                ctx.strokeStyle="#333"; 
+                ctx.strokeRect(px,py,b.w*TILE_SIZE,b.h*TILE_SIZE); 
+            }
+        } 
+        else if(t.animal && t.animal.isMain) { 
+            var a=ANIMALS[t.animal.id]; 
+            if (a.name === "Курица" && chickenAwakeImg && chickenSleepingImg) {
+                var scale = 1.8;
+                var size = Math.floor(TILE_SIZE * scale);
+                var offsetX = Math.floor((TILE_SIZE - size) / 2);
+                var offsetY = Math.floor((TILE_SIZE - size) / 2);
+                if (t.animal.hungryTimer > 10) {
+                    ctx.drawImage(chickenSleepingImg, px + offsetX, py + offsetY, size, size);
+                    ctx.fillStyle="#FFF"; ctx.globalAlpha=0.7+Math.sin(Date.now()/300)*0.3;
+                    ctx.font="9px 'Press Start 2P'"; ctx.fillText("Zzz", px+20, py+6); ctx.globalAlpha=1;
+                } else {
+                    ctx.drawImage(chickenAwakeImg, px + offsetX, py + offsetY, size, size);
+                }
+            } else { 
+                ctx.fillStyle=a.color; 
+                ctx.fillRect(px+4,py+4,(a.w*TILE_SIZE)-8,(a.h*TILE_SIZE)-8); 
+                if(t.animal.hungryTimer>10){ ctx.fillStyle="red"; ctx.font="10px Arial"; ctx.fillText("!",px+10,py-5); } 
+            }
+        }
+        else if(t.crop) { 
+            var c=CROPS[t.crop.id]; 
+            var pct=t.crop.p/t.crop.max; 
+            
+            if (c.name === "Картофель" && potatoSprites[4]) {
+                var sprite = pct<0.2?potatoSprites[1]:pct<0.5?potatoSprites[2]:pct<0.8?potatoSprites[3]:potatoSprites[4];
+                if(sprite){ctx.drawImage(sprite,px,py,TILE_SIZE,TILE_SIZE); if(pct>=1){ctx.fillStyle="#F1C40F";ctx.globalAlpha=0.5+Math.sin(Date.now()/200)*0.5;ctx.fillRect(px+14,py+2,4,4);ctx.globalAlpha=1;}}
+            } else if (c.name === "Морковь" && carrotSprites[4]) {
+                var sprite = pct<0.2?carrotSprites[1]:pct<0.5?carrotSprites[2]:pct<0.8?carrotSprites[3]:carrotSprites[4];
+                if(sprite){ctx.drawImage(sprite,px,py,TILE_SIZE,TILE_SIZE); if(pct>=1){ctx.fillStyle="#F1C40F";ctx.globalAlpha=0.5+Math.sin(Date.now()/200)*0.5;ctx.fillRect(px+14,py+2,4,4);ctx.globalAlpha=1;}}
+            } else if (c.name === "Пшеница" && wheatSprites[4]) {
+                var sprite = pct<0.25?wheatSprites[1]:pct<0.5?wheatSprites[2]:pct<0.75?wheatSprites[3]:wheatSprites[4];
+                if(sprite){ctx.drawImage(sprite,px,py,TILE_SIZE,TILE_SIZE); if(pct>=1){ctx.fillStyle="#F1C40F";ctx.globalAlpha=0.5+Math.sin(Date.now()/200)*0.5;ctx.fillRect(px+14,py+2,4,4);ctx.globalAlpha=1;}}
+            } else { 
+                if(pct<0.2){ctx.fillStyle="#27AE60";ctx.fillRect(px+14,py+18,4,8);}
+                else if(pct<0.4){ctx.fillStyle="#27AE60";ctx.fillRect(px+12,py+16,6,10);ctx.fillStyle="#2ECC71";ctx.fillRect(px+10,py+14,2,4);ctx.fillRect(px+20,py+14,2,4);}
+                else if(pct<0.6){ctx.fillStyle=c.color;ctx.fillRect(px+12,py+12,8,14);ctx.fillStyle="#27AE60";ctx.fillRect(px+8,py+14,4,6);ctx.fillRect(px+20,py+14,4,6);}
+                else if(pct<0.8){ctx.fillStyle=c.color;ctx.fillRect(px+10,py+8,12,18);ctx.fillStyle="#27AE60";ctx.fillRect(px+6,py+10,4,8);ctx.fillRect(px+22,py+10,4,8);ctx.fillRect(px+8,py+6,4,4);ctx.fillRect(px+20,py+6,4,4);}
+                else{ctx.fillStyle=c.color;ctx.fillRect(px+8,py+6,16,20);ctx.fillStyle="#27AE60";ctx.fillRect(px+4,py+8,4,10);ctx.fillRect(px+24,py+8,4,10);ctx.fillRect(px+6,py+4,4,6);ctx.fillRect(px+22,py+4,4,6);ctx.fillStyle="#F1C40F";ctx.globalAlpha=0.5+Math.sin(Date.now()/200)*0.5;ctx.fillRect(px+14,py+2,4,4);ctx.globalAlpha=1;}
+            }
+        }
+    }
+    ctx.restore(); 
+    drawFloatingTexts(); 
+    requestAnimationFrame(draw);
+}
+
+function addFloatingText(x,y,t,c){floatingTexts.push({x:x*TILE_SIZE+16,y:y*TILE_SIZE,text:t,color:c,life:1.5});}
+function drawFloatingTexts(){ctx.font="10px 'Press Start 2P'";ctx.textAlign="center";ctx.strokeStyle="black";ctx.lineWidth=2;for(var i=floatingTexts.length-1;i>=0;i--){var t=floatingTexts[i];t.y-=0.8;t.life-=0.015;ctx.globalAlpha=Math.min(t.life,1);ctx.fillStyle=t.color;ctx.strokeText(t.text,t.x,t.y);ctx.fillText(t.text,t.x,t.y);ctx.globalAlpha=1;if(t.life<=0)floatingTexts.splice(i,1);}}
+
+function switchTab(n){document.querySelectorAll('.tab-content').forEach(function(e){e.classList.remove('active');});document.querySelectorAll('.tab-btn').forEach(function(e){e.classList.remove('active');});document.getElementById('tab-'+n).classList.add('active');var m={'tools':0,'seeds':1,'animals':2,'build':3,'feed':4};var b=document.querySelectorAll('.tab-btn');if(b[m[n]])b[m[n]].classList.add('active');}
+function setTool(id){state.tool=id;state.buildMode=null;document.querySelectorAll('.tool-grid .btn').forEach(function(b){b.classList.remove('active');});var b=document.getElementById('btn-'+id.replace('_','-'));if(b)b.classList.add('active');updateUI();}
+function updateUI() {
+    document.getElementById('ui-money').innerText=state.money; document.getElementById('ui-lvl').innerText=state.lvl; document.getElementById('ui-xp').innerText=state.xp+"/"+(state.lvl*150); document.getElementById('ui-feed').innerText=state.feed;
+    document.getElementById('expand-cost').innerText=500*(Math.max(state.mapW,state.mapH)-11);
+    var sd=document.getElementById('seeds-list'); sd.innerHTML=''; var ck=Object.keys(CROPS); for(var k=0;k<ck.length;k++){var c=CROPS[ck[k]],lk=state.lvl<c.unlockLvl,d=document.createElement('div');d.className='item-row'+(state.seed===c.id?' selected':'')+(lk?' locked':'');d.innerHTML='<div><b>'+(lk?'???':c.name)+'</b><br>LVL '+c.unlockLvl+'</div><div style="text-align:right">'+c.cost+'$<br><span style="color:#2ecc71">+'+c.sell+'$</span></div>';if(!lk)(function(id){d.onclick=function(){state.seed=id;state.tool='plant';updateUI();};})(c.id);sd.appendChild(d);}
+    var ad=document.getElementById('animals-list'); ad.innerHTML=''; var ak=Object.keys(ANIMALS); for(var k=0;k<ak.length;k++){var a=ANIMALS[ak[k]],lk=state.lvl<a.unlockLvl,d=document.createElement('div');d.className='item-row'+(state.animalToBuy===a.id?' selected':'')+(lk?' locked':'');d.innerHTML='<div><b>'+(lk?'???':a.name)+'</b><br>'+a.w+'x'+a.h+'</div><div style="text-align:right">'+a.cost+'$<br><span style="color:#f1c40f">+'+a.inc+'$/сек</span></div>';if(!lk)(function(id){d.onclick=function(){state.animalToBuy=id;state.tool='buy_animal';updateUI();};})(a.id);ad.appendChild(d);}
+    var bd=document.getElementById('buildings-list'); if(!bd.innerHTML){var bk=Object.keys(BUILDINGS);for(var i=0;i<bk.length;i++){var key=bk[i],b=BUILDINGS[key],d=document.createElement('div');d.className='item-row';d.innerHTML='<div><b>'+b.name+'</b><br>'+b.w+'x'+b.h+'</div><div>'+b.cost+'$</div>';(function(k){d.onclick=function(){state.buildMode=k;toast('Тапните для постройки');};})(key);bd.appendChild(d);}}
+}
+function toast(m){var t=document.getElementById('toast');t.innerText=m;t.style.display='block';setTimeout(function(){t.style.display='none';},2000);}
+
+setupInput(); loadGame(); setTimeout(resize,100);
+</script>
+</body>
+</html>
